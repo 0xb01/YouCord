@@ -34,6 +34,7 @@ namespace YouCord
             listView1.View = View.Details;
             listView1.OwnerDraw = true;
             listView1.FullRowSelect = true;
+            listView1.CheckBoxes = true;
 
             _boldFont = new Font(listView1.Font, FontStyle.Bold);
 
@@ -72,22 +73,9 @@ namespace YouCord
         {
             if (!(e.Item.Tag is ChannelConfig data)) return;
 
-            Brush bgBrush;
-            Brush textBrush;
-            Brush secondaryTextBrush;
-
-            if (e.Item.Selected)
-            {
-                bgBrush = SystemBrushes.Highlight;
-                textBrush = SystemBrushes.HighlightText;
-                secondaryTextBrush = SystemBrushes.HighlightText;
-            }
-            else
-            {
-                bgBrush = SystemBrushes.Window;
-                textBrush = Brushes.Black;
-                secondaryTextBrush = Brushes.Gray;
-            }
+            Brush bgBrush = e.Item.Selected ? SystemBrushes.Highlight : SystemBrushes.Window;
+            Brush textBrush = e.Item.Selected ? SystemBrushes.HighlightText : Brushes.Black;
+            Brush secBrush = e.Item.Selected ? SystemBrushes.HighlightText : Brushes.Gray;
 
             e.Graphics.FillRectangle(bgBrush, e.Bounds);
 
@@ -96,28 +84,26 @@ namespace YouCord
 
             if (e.ColumnIndex == 0)
             {
+                Point checkPos = new Point(e.Bounds.X + 2, e.Bounds.Y + (e.Bounds.Height - 14) / 2);
+                CheckBoxRenderer.DrawCheckBox(e.Graphics, checkPos, e.Item.Checked ? System.Windows.Forms.VisualStyles.CheckBoxState.CheckedNormal : System.Windows.Forms.VisualStyles.CheckBoxState.UncheckedNormal);
+
                 if (data.ChannelAvatarImg != null)
                 {
-                    e.Graphics.DrawImage(data.ChannelAvatarImg, e.Bounds.X + 5, e.Bounds.Y + 10, 40, 40);
+                    e.Graphics.DrawImage(data.ChannelAvatarImg, e.Bounds.X + 25, e.Bounds.Y + 10, 40, 40);
                 }
-
-                Rectangle textRect = new Rectangle(e.Bounds.X + 50, e.Bounds.Y, e.Bounds.Width - 50, e.Bounds.Height);
+                Rectangle textRect = new Rectangle(e.Bounds.X + 70, e.Bounds.Y, e.Bounds.Width - 70, e.Bounds.Height);
                 e.Graphics.DrawString(data.ChannelName, _boldFont, textBrush, textRect, sfLeft);
             }
             else if (e.ColumnIndex == 1)
             {
-                if (data.VideoThumbnailImg != null)
-                {
-                    e.Graphics.DrawImage(data.VideoThumbnailImg, e.Bounds.X + 5, e.Bounds.Y + 5, 89, 50);
-                }
-
+                if (data.VideoThumbnailImg != null) e.Graphics.DrawImage(data.VideoThumbnailImg, e.Bounds.X + 5, e.Bounds.Y + 5, 89, 50);
                 Rectangle textRect = new Rectangle(e.Bounds.X + 100, e.Bounds.Y, e.Bounds.Width - 100, e.Bounds.Height);
                 e.Graphics.DrawString(data.VideoTitle, _boldFont, textBrush, textRect, sfLeft);
             }
             else
             {
                 DateTime date = DateTimeOffset.FromUnixTimeSeconds(data.UploadTimestamp).LocalDateTime;
-                e.Graphics.DrawString(date.ToString("yyyy-MM-dd HH:mm"), _boldFont, secondaryTextBrush, e.Bounds, sfCenter);
+                e.Graphics.DrawString(date.ToString("yyyy-MM-dd HH:mm"), _boldFont, secBrush, e.Bounds, sfCenter);
             }
         }
 
@@ -128,19 +114,24 @@ namespace YouCord
 
             if (item != null)
             {
-                int clickX = e.X;
+                if (e.X < 24)
+                {
+                    info.Item.Checked = !info.Item.Checked;
+                    listView1.Invalidate();
+                    return;
+                }
+
                 int currentX = 0;
                 int colIndex = -1;
 
                 for (int i = 0; i < listView1.Columns.Count; i++)
                 {
-                    int colWidth = listView1.Columns[i].Width;
-                    if (clickX >= currentX && clickX < currentX + colWidth)
+                    if (e.X >= currentX && e.X < currentX + listView1.Columns[i].Width)
                     {
                         colIndex = i;
                         break;
                     }
-                    currentX += colWidth;
+                    currentX += listView1.Columns[i].Width;
                 }
 
                 if (item.Tag is ChannelConfig data)
@@ -243,7 +234,7 @@ namespace YouCord
                     }
                     else
                     {
-                        Log("No Discord webhook set for this channel. Skipping notification.");
+                        Log("No Discord webhook set. Skipping notification.");
                     }
 
                     _watchedChannels[i] = latest;
@@ -351,22 +342,33 @@ namespace YouCord
 
         private void deleteSelectedToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (listView1.SelectedItems.Count > 0)
-            {
-                var item = listView1.SelectedItems[0];
-                if (item.Tag is ChannelConfig config)
-                {
-                    var confirm = MessageBox.Show($"Are you sure you want to remove '{config.ChannelName}'?",
-                        "Remove?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            var itemsToDelete = listView1.CheckedItems.Cast<ListViewItem>().ToList();
 
-                    if (confirm == DialogResult.Yes)
+            if (itemsToDelete.Count == 0 && listView1.SelectedItems.Count > 0)
+            {
+                itemsToDelete = listView1.SelectedItems.Cast<ListViewItem>().ToList();
+            }
+
+            if (itemsToDelete.Count == 0)
+            {
+                MessageBox.Show("Please check or select channels to delete.");
+                return;
+            }
+
+            var confirm = MessageBox.Show($"Are you sure you want to delete {itemsToDelete.Count} channel(s)?", "Delete?", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+            if (confirm == DialogResult.Yes)
+            {
+                foreach (var item in itemsToDelete)
+                {
+                    if (item.Tag is ChannelConfig config)
                     {
                         _watchedChannels.RemoveAll(x => x.ChannelId == config.ChannelId);
                         listView1.Items.Remove(item);
-                        YouTubeManager.SaveConfig(_watchedChannels);
-                        Log($"Deleted channel: {config.ChannelName}");
+                        Log($"Deleted Channel: {config.ChannelName}");
                     }
                 }
+                YouTubeManager.SaveConfig(_watchedChannels);
             }
         }
 
