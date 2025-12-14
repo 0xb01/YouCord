@@ -27,6 +27,7 @@ namespace YouCord
             SetupList();
             SetupTimer();
             LoadChannels();
+            CheckForUpdates();
         }
 
         private void SetupList()
