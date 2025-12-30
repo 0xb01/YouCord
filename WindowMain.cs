@@ -222,33 +222,40 @@ namespace YouCord
             for (int i = 0; i < _watchedChannels.Count; i++)
             {
                 var current = _watchedChannels[i];
-                var latest = await YouTubeManager.GetChannelInfoAsync(current.ChannelId);
-
-                if (latest != null && latest.VideoId != current.VideoId)
+                try
                 {
-                    Log($"New Upload: {latest.ChannelName} - '{latest.VideoTitle}'");
+                    var latest = await YouTubeManager.GetChannelInfoAsync(current.ChannelId);
 
-                    if (!string.IsNullOrEmpty(_currentWebhookUrl))
+                    if (latest != null && latest.VideoId != current.VideoId)
                     {
-                        Log($"Sending Discord notification for {latest.ChannelName}...");
-                        await YouTubeManager.SendDiscordNotificationAsync(latest);
-                    }
-                    else
-                    {
-                        Log("No Discord webhook set. Skipping notification.");
-                    }
+                        Log($"New Upload: {latest.ChannelName} - '{latest.VideoTitle}'");
 
-                    _watchedChannels[i] = latest;
-
-                    foreach (ListViewItem item in listView1.Items)
-                    {
-                        if (item.Tag is ChannelConfig c && c.ChannelId == current.ChannelId)
+                        if (!string.IsNullOrEmpty(_currentWebhookUrl))
                         {
-                            item.Tag = latest;
-                            break;
+                            Log($"Sending Discord notification for {latest.ChannelName}...");
+                            await YouTubeManager.SendDiscordNotificationAsync(latest);
                         }
+                        else
+                        {
+                            Log("No Discord webhook set. Skipping notification.");
+                        }
+
+                        _watchedChannels[i] = latest;
+
+                        foreach (ListViewItem item in listView1.Items)
+                        {
+                            if (item.Tag is ChannelConfig c && c.ChannelId == current.ChannelId)
+                            {
+                                item.Tag = latest;
+                                break;
+                            }
+                        }
+                        anyUpdates = true;
                     }
-                    anyUpdates = true;
+                }
+                catch (Exception ex)
+                {
+                    // do nothing
                 }
             }
 
